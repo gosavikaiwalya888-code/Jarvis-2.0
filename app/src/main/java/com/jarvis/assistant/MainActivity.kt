@@ -75,8 +75,7 @@ class MainActivity : ComponentActivity() {
         val text = command.lowercase(Locale.getDefault())
 
         when {
-            "wifi" in text ->
-                startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+            
 
             "bluetooth" in text ->
                 startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
@@ -263,9 +262,7 @@ fun JarvisScreen(
             Spacer(Modifier.height(10.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                QuickButton("Wi-Fi", Modifier.weight(1f)) {
-                    onCommand("wifi")
-                }
+                
                 QuickButton("Settings", Modifier.weight(1f)) {
                     onCommand("settings")
                 }
