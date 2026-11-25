@@ -6,7 +6,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -23,18 +26,47 @@ import android.widget.TextView
 class FloatingNotchService : Service() {
 
     private lateinit var windowManager: WindowManager
-    private var notchView: View? = null
+    private var notchView: LinearLayout? = null
+    private var notificationTextView: TextView? = null
     private var expanded = false
+
+    private var latestNotification = "No new notifications"
 
     companion object {
         private const val CHANNEL_ID = "jarvis_notch"
         private const val NOTIFICATION_ID = 10
+        private const val NOTIFICATION_ACTION =
+            "com.jarvis.assistant.NOTIFICATION"
+    }
+
+    private val notificationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val app = intent?.getStringExtra("app") ?: "App"
+            val title = intent?.getStringExtra("title") ?: "Notification"
+            val message = intent?.getStringExtra("message") ?: ""
+
+            latestNotification = "$app\n$title\n$message"
+            notificationTextView?.text = latestNotification
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
+
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
+
+        val filter = IntentFilter(NOTIFICATION_ACTION)
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(
+                notificationReceiver,
+                filter,
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(notificationReceiver, filter)
+        }
     }
 
     override fun onStartCommand(
@@ -47,7 +79,8 @@ class FloatingNotchService : Service() {
             return START_NOT_STICKY
         }
 
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        windowManager =
+            getSystemService(WINDOW_SERVICE) as WindowManager
 
         if (notchView == null) {
             showNotch()
@@ -63,11 +96,12 @@ class FloatingNotchService : Service() {
                 "JARVIS Floating Interface",
                 NotificationManager.IMPORTANCE_LOW
             )
-            channel.description = "Keeps the JARVIS floating interface active"
 
-            val manager =
-                getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            channel.description =
+                "Keeps the JARVIS floating interface active"
+
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
         }
     }
 
@@ -91,16 +125,19 @@ class FloatingNotchService : Service() {
             .build()
     }
 
-    private fun makeBackground(color: Int, radius: Float): GradientDrawable {
-        return GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), Color.rgb(0, 190, 220))
-        }
-    }
-
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private fun makeBackground(
+        color: Int,
+        radius: Float
+    ): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius.toInt()).toFloat()
+            setStroke(dp(1), Color.rgb(0, 190, 220))
+        }
     }
 
     private fun makeText(
@@ -112,7 +149,10 @@ class FloatingNotchService : Service() {
             text = value
             textSize = size
             setTextColor(color)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            typeface = Typeface.create(
+                "sans-serif-medium",
+                Typeface.NORMAL
+            )
             gravity = Gravity.CENTER
         }
     }
@@ -121,7 +161,10 @@ class FloatingNotchService : Service() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            background = makeBackground(Color.rgb(8, 15, 25), 22f)
+            background = makeBackground(
+                Color.rgb(8, 15, 25),
+                22f
+            )
             setPadding(dp(16), dp(9), dp(16), dp(9))
         }
 
@@ -133,10 +176,7 @@ class FloatingNotchService : Service() {
 
         container.addView(
             title,
-            LinearLayout.LayoutParams(
-                dp(155),
-                dp(35)
-            )
+            LinearLayout.LayoutParams(dp(155), dp(35))
         )
 
         title.setOnClickListener {
@@ -163,6 +203,7 @@ class FloatingNotchService : Service() {
     private fun toggleNotch(container: LinearLayout) {
         if (expanded) {
             container.removeAllViews()
+            notificationTextView = null
 
             val title = makeText(
                 "✦  J.A.R.V.I.S.  ✦",
@@ -170,15 +211,23 @@ class FloatingNotchService : Service() {
                 Color.rgb(0, 220, 255)
             )
 
-            container.addView(title, LinearLayout.LayoutParams(dp(155), dp(35)))
-            title.setOnClickListener { toggleNotch(container) }
+            container.addView(
+                title,
+                LinearLayout.LayoutParams(dp(155), dp(35))
+            )
+
+            title.setOnClickListener {
+                toggleNotch(container)
+            }
+
             expanded = false
             return
         }
 
         container.removeAllViews()
-        container.orientation = LinearLayout.VERTICAL
-        container.setPadding(dp(18), dp(14), dp(18), dp(14))
+        container.setPadding(
+            dp(18), dp(14), dp(18), dp(14)
+        )
 
         val heading = makeText(
             "J.A.R.V.I.S. SYSTEM",
@@ -192,19 +241,32 @@ class FloatingNotchService : Service() {
             Color.GREEN
         )
 
-        val info = makeText(
-            "Notification panel ready",
+        val notificationLabel = makeText(
+            "LATEST NOTIFICATION",
             12f,
+            Color.rgb(0, 220, 255)
+        )
+
+        val notification = makeText(
+            latestNotification,
+            11f,
             Color.LTGRAY
         )
+
+        notification.maxLines = 5
+        notificationTextView = notification
 
         val open = makeText(
             "OPEN JARVIS",
             13f,
             Color.WHITE
         ).apply {
-            background = makeBackground(Color.rgb(0, 90, 120), 12f)
+            background = makeBackground(
+                Color.rgb(0, 90, 120),
+                12f
+            )
             setPadding(dp(12), dp(8), dp(12), dp(8))
+
             setOnClickListener {
                 val intent = Intent(
                     this@FloatingNotchService,
@@ -212,6 +274,7 @@ class FloatingNotchService : Service() {
                 ).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
+
                 startActivity(intent)
             }
         }
@@ -222,12 +285,16 @@ class FloatingNotchService : Service() {
             Color.rgb(0, 220, 255)
         ).apply {
             setPadding(dp(10), dp(8), dp(10), dp(8))
-            setOnClickListener { toggleNotch(container) }
+
+            setOnClickListener {
+                toggleNotch(container)
+            }
         }
 
         container.addView(heading)
         container.addView(status)
-        container.addView(info)
+        container.addView(notificationLabel)
+        container.addView(notification)
         container.addView(open)
         container.addView(close)
 
@@ -235,7 +302,10 @@ class FloatingNotchService : Service() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        try {
+            unregisterReceiver(notificationReceiver)
+        } catch (_: Exception) {
+        }
 
         notchView?.let {
             try {
@@ -245,6 +315,9 @@ class FloatingNotchService : Service() {
         }
 
         notchView = null
+        notificationTextView = null
+
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
