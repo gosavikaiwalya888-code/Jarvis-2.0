@@ -4,6 +4,7 @@ package com.jarvis.assistant
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import androidx.activity.ComponentActivity
@@ -38,8 +39,26 @@ class MainActivity : ComponentActivity() {
         setContent {
             JarvisScreen(
                 onSpeak = { speak(it) },
-                onCommand = { handleCommand(it) }
+                onCommand = { handleCommand(it) },
+                onStartNotch = { startNotch() }
             )
+        }
+    }
+
+    private fun startNotch() {
+        if (Settings.canDrawOverlays(this)) {
+            val serviceIntent = Intent(
+                this,
+                FloatingNotchService::class.java
+            )
+
+            startForegroundService(serviceIntent)
+        } else {
+            val permissionIntent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivity(permissionIntent)
         }
     }
 
@@ -56,30 +75,25 @@ class MainActivity : ComponentActivity() {
         val text = command.lowercase(Locale.getDefault())
 
         when {
-            "wifi" in text -> {
-                startActivity(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))
-            }
+            "wifi" in text ->
+                startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
 
-            "bluetooth" in text -> {
-                startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))
-            }
+            "bluetooth" in text ->
+                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
 
-            "settings" in text -> {
-                startActivity(Intent(android.provider.Settings.ACTION_SETTINGS))
-            }
+            "settings" in text ->
+                startActivity(Intent(Settings.ACTION_SETTINGS))
 
-            "alarm" in text -> {
+            "alarm" in text ->
                 startActivity(Intent(android.provider.AlarmClock.ACTION_SET_ALARM))
-            }
 
             "call" in text -> {
-                speak("Please use the dialer to enter the number.")
+                speak("Opening phone dialer.")
                 startActivity(Intent(Intent.ACTION_DIAL))
             }
 
-            "message" in text || "sms" in text -> {
+            "message" in text || "sms" in text ->
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("smsto:")))
-            }
 
             "whatsapp" in text -> {
                 val intent = Intent(Intent.ACTION_SEND).apply {
@@ -91,28 +105,22 @@ class MainActivity : ComponentActivity() {
                     .onFailure { speak("WhatsApp is unavailable.") }
             }
 
-            "gmail" in text || "email" in text -> {
-                startActivity(Intent(Intent.ACTION_SENDTO).apply {
-                    data = Uri.parse("mailto:")
-                })
-            }
+            "gmail" in text || "email" in text ->
+                startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")))
 
-            "stock" in text || "market" in text -> {
+            "stock" in text || "market" in text ->
                 startActivity(
                     Intent(
                         Intent.ACTION_VIEW,
                         Uri.parse("https://www.google.com/finance/")
                     )
                 )
-            }
 
-            "hello" in text || "hi jarvis" in text -> {
+            "hello" in text || "hi jarvis" in text ->
                 speak("Hello sir. JARVIS systems are ready.")
-            }
 
-            else -> {
+            else ->
                 speak("I heard you. This command is not available yet.")
-            }
         }
     }
 
@@ -128,11 +136,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun JarvisScreen(
     onSpeak: (String) -> Unit,
-    onCommand: (String) -> Unit
+    onCommand: (String) -> Unit,
+    onStartNotch: () -> Unit
 ) {
     var status by remember { mutableStateOf("SYSTEM ONLINE") }
     var command by remember { mutableStateOf("") }
-    var deepVoice by remember { mutableStateOf(false) }
+
+    val blue = Color(0xFF00BFFF)
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -150,14 +160,8 @@ fun JarvisScreen(
         }
     }
 
-    val blue = Color(0xFF00BFFF)
-
     MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = blue,
-            background = Color(0xFF050B16),
-            surface = Color(0xFF101D30)
-        )
+        colorScheme = darkColorScheme(primary = blue)
     ) {
         Column(
             modifier = Modifier
@@ -168,51 +172,48 @@ fun JarvisScreen(
         ) {
             Spacer(Modifier.height(25.dp))
 
-            Text(
-                "J.A.R.V.I.S.",
-                color = blue,
-                fontSize = 32.sp
-            )
-
+            Text("J.A.R.V.I.S.", color = blue, fontSize = 32.sp)
             Text(
                 "PERSONAL AI ASSISTANT",
                 color = Color.LightGray,
                 fontSize = 12.sp
             )
 
-            Spacer(Modifier.height(35.dp))
+            Spacer(Modifier.height(30.dp))
 
             Surface(
-                modifier = Modifier.size(175.dp),
+                modifier = Modifier.size(170.dp),
                 shape = RoundedCornerShape(100.dp),
-                color = Color(0xFF102B48),
-                tonalElevation = 12.dp
+                color = Color(0xFF102B48)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        "J",
-                        color = blue,
-                        fontSize = 76.sp
-                    )
+                    Text("J", color = blue, fontSize = 76.sp)
                 }
             }
 
-            Spacer(Modifier.height(25.dp))
-
-            Text(status, color = blue, fontSize = 14.sp)
-
             Spacer(Modifier.height(20.dp))
+            Text(status, color = blue)
+
+            Spacer(Modifier.height(15.dp))
 
             Button(
                 onClick = {
                     status = "LISTENING..."
-                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    val intent = Intent(
+                        RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+                    ).apply {
                         putExtra(
                             RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                             RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
                         )
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
-                        putExtra(RecognizerIntent.EXTRA_PROMPT, "Yes sir?")
+                        putExtra(
+                            RecognizerIntent.EXTRA_LANGUAGE,
+                            "en-IN"
+                        )
+                        putExtra(
+                            RecognizerIntent.EXTRA_PROMPT,
+                            "Yes sir?"
+                        )
                     }
 
                     try {
@@ -223,10 +224,19 @@ fun JarvisScreen(
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("🎙  TALK TO JARVIS")
+                Text("🎙 TALK TO JARVIS")
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
+
+            Button(
+                onClick = onStartNotch,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("ENABLE FLOATING NOTCH")
+            }
+
+            Spacer(Modifier.height(12.dp))
 
             OutlinedTextField(
                 value = command,
@@ -247,65 +257,33 @@ fun JarvisScreen(
                 Text("EXECUTE COMMAND")
             }
 
-            Spacer(Modifier.height(12.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Voice profile", color = Color.White)
-                Spacer(Modifier.width(12.dp))
-                Switch(
-                    checked = deepVoice,
-                    onCheckedChange = {
-                        deepVoice = it
-                        onSpeak(
-                            if (it) "Deep voice profile selected."
-                            else "British voice profile selected."
-                        )
-                    }
-                )
-                Text(
-                    if (deepVoice) "Deep" else "British",
-                    color = blue
-                )
-            }
-
-            Spacer(Modifier.height(18.dp))
-
-            Text(
-                "QUICK ACCESS",
-                color = blue,
-                fontSize = 14.sp
-            )
+            Spacer(Modifier.height(20.dp))
+            Text("QUICK ACCESS", color = blue)
 
             Spacer(Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                QuickButton("Wi-Fi") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickButton("Wi-Fi", Modifier.weight(1f)) {
                     onCommand("wifi")
                 }
-                QuickButton("Settings") {
+                QuickButton("Settings", Modifier.weight(1f)) {
                     onCommand("settings")
                 }
-                QuickButton("Alarm") {
+                QuickButton("Alarm", Modifier.weight(1f)) {
                     onCommand("alarm")
                 }
             }
 
             Spacer(Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                QuickButton("Call") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickButton("Call", Modifier.weight(1f)) {
                     onCommand("call")
                 }
-                QuickButton("WhatsApp") {
+                QuickButton("WhatsApp", Modifier.weight(1f)) {
                     onCommand("whatsapp")
                 }
-                QuickButton("Stocks") {
+                QuickButton("Stocks", Modifier.weight(1f)) {
                     onCommand("stock")
                 }
             }
