@@ -324,11 +324,12 @@ fun JarvisScreen(
 @Composable
 fun QuickButton(
     label: String,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Button(
         onClick = onClick,
-        modifier = Modifier.weight(1f),
+        modifier = modifier,
         contentPadding = PaddingValues(5.dp)
     ) {
         Text(label, fontSize = 11.sp)
