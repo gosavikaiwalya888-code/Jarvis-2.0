@@ -40,9 +40,19 @@ class MainActivity : ComponentActivity() {
             JarvisScreen(
                 onSpeak = { speak(it) },
                 onCommand = { handleCommand(it) },
-                onStartNotch = { startNotch() }
+                onStartNotch = { startNotch() },
+                onNotificationAccess = {
+                    openNotificationAccess()
+                }
             )
         }
+    }
+
+    private fun openNotificationAccess() {
+        val intent = Intent(
+            Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
+        )
+        startActivity(intent)
     }
 
     private fun startNotch() {
@@ -51,7 +61,6 @@ class MainActivity : ComponentActivity() {
                 this,
                 FloatingNotchService::class.java
             )
-
             startForegroundService(serviceIntent)
         } else {
             val permissionIntent = Intent(
@@ -75,16 +84,20 @@ class MainActivity : ComponentActivity() {
         val text = command.lowercase(Locale.getDefault())
 
         when {
-            
-
             "bluetooth" in text ->
-                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                startActivity(
+                    Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                )
 
             "settings" in text ->
-                startActivity(Intent(Settings.ACTION_SETTINGS))
+                startActivity(
+                    Intent(Settings.ACTION_SETTINGS)
+                )
 
             "alarm" in text ->
-                startActivity(Intent(android.provider.AlarmClock.ACTION_SET_ALARM))
+                startActivity(
+                    Intent(android.provider.AlarmClock.ACTION_SET_ALARM)
+                )
 
             "call" in text -> {
                 speak("Opening phone dialer.")
@@ -92,7 +105,9 @@ class MainActivity : ComponentActivity() {
             }
 
             "message" in text || "sms" in text ->
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("smsto:")))
+                startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("smsto:"))
+                )
 
             "whatsapp" in text -> {
                 val intent = Intent(Intent.ACTION_SEND).apply {
@@ -100,12 +115,21 @@ class MainActivity : ComponentActivity() {
                     setPackage("com.whatsapp")
                     putExtra(Intent.EXTRA_TEXT, "Hello!")
                 }
-                runCatching { startActivity(intent) }
-                    .onFailure { speak("WhatsApp is unavailable.") }
+
+                runCatching {
+                    startActivity(intent)
+                }.onFailure {
+                    speak("WhatsApp is unavailable.")
+                }
             }
 
             "gmail" in text || "email" in text ->
-                startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")))
+                startActivity(
+                    Intent(
+                        Intent.ACTION_SENDTO,
+                        Uri.parse("mailto:")
+                    )
+                )
 
             "stock" in text || "market" in text ->
                 startActivity(
@@ -136,10 +160,16 @@ class MainActivity : ComponentActivity() {
 fun JarvisScreen(
     onSpeak: (String) -> Unit,
     onCommand: (String) -> Unit,
-    onStartNotch: () -> Unit
+    onStartNotch: () -> Unit,
+    onNotificationAccess: () -> Unit
 ) {
-    var status by remember { mutableStateOf("SYSTEM ONLINE") }
-    var command by remember { mutableStateOf("") }
+    var status by remember {
+        mutableStateOf("SYSTEM ONLINE")
+    }
+
+    var command by remember {
+        mutableStateOf("")
+    }
 
     val blue = Color(0xFF00BFFF)
 
@@ -147,7 +177,9 @@ fun JarvisScreen(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val spoken = result.data
-            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.getStringArrayListExtra(
+                RecognizerIntent.EXTRA_RESULTS
+            )
             ?.firstOrNull()
 
         if (spoken != null) {
@@ -171,7 +203,12 @@ fun JarvisScreen(
         ) {
             Spacer(Modifier.height(25.dp))
 
-            Text("J.A.R.V.I.S.", color = blue, fontSize = 32.sp)
+            Text(
+                "J.A.R.V.I.S.",
+                color = blue,
+                fontSize = 32.sp
+            )
+
             Text(
                 "PERSONAL AI ASSISTANT",
                 color = Color.LightGray,
@@ -186,11 +223,16 @@ fun JarvisScreen(
                 color = Color(0xFF102B48)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("J", color = blue, fontSize = 76.sp)
+                    Text(
+                        "J",
+                        color = blue,
+                        fontSize = 76.sp
+                    )
                 }
             }
 
             Spacer(Modifier.height(20.dp))
+
             Text(status, color = blue)
 
             Spacer(Modifier.height(15.dp))
@@ -198,6 +240,7 @@ fun JarvisScreen(
             Button(
                 onClick = {
                     status = "LISTENING..."
+
                     val intent = Intent(
                         RecognizerIntent.ACTION_RECOGNIZE_SPEECH
                     ).apply {
@@ -235,6 +278,15 @@ fun JarvisScreen(
                 Text("ENABLE FLOATING NOTCH")
             }
 
+            Spacer(Modifier.height(10.dp))
+
+            Button(
+                onClick = onNotificationAccess,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("ENABLE NOTIFICATION ACCESS")
+            }
+
             Spacer(Modifier.height(12.dp))
 
             OutlinedTextField(
@@ -257,15 +309,18 @@ fun JarvisScreen(
             }
 
             Spacer(Modifier.height(20.dp))
+
             Text("QUICK ACCESS", color = blue)
 
             Spacer(Modifier.height(10.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 QuickButton("Settings", Modifier.weight(1f)) {
                     onCommand("settings")
                 }
+
                 QuickButton("Alarm", Modifier.weight(1f)) {
                     onCommand("alarm")
                 }
@@ -273,13 +328,17 @@ fun JarvisScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 QuickButton("Call", Modifier.weight(1f)) {
                     onCommand("call")
                 }
+
                 QuickButton("WhatsApp", Modifier.weight(1f)) {
                     onCommand("whatsapp")
                 }
+
                 QuickButton("Stocks", Modifier.weight(1f)) {
                     onCommand("stock")
                 }
