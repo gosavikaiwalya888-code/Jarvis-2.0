@@ -1,6 +1,7 @@
 
 package com.jarvis.assistant
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -13,7 +14,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,13 +29,20 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
 
     private lateinit var speaker: TextToSpeech
+    private var startNotchAfterPermission = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        speaker = TextToSpeech(this) {
-            if (it == TextToSpeech.SUCCESS) {
-                speaker.language = Locale.UK
+        speaker = TextToSpeech(this) { result ->
+            if (result == TextToSpeech.SUCCESS) {
+                val languageResult = speaker.setLanguage(Locale.UK)
+                if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
+                    languageResult == TextToSpeech.LANG_NOT_SUPPORTED
+                ) {
+                    speaker.setLanguage(Locale.ENGLISH)
+                }
+                speaker.setSpeechRate(0.95f)
             }
         }
 
@@ -41,28 +51,44 @@ class MainActivity : ComponentActivity() {
                 onSpeak = { speak(it) },
                 onCommand = { handleCommand(it) },
                 onStartNotch = { startNotch() },
-                onNotificationAccess = {
-                    openNotificationAccess()
-                }
+                onNotificationAccess = { openNotificationAccess() }
+            )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        if (startNotchAfterPermission) {
+            startNotchAfterPermission = false
+            if (Settings.canDrawOverlays(this)) {
+                launchNotchService()
+            }
+        }
+    }
+
+    private fun speak(message: String) {
+        if (::speaker.isInitialized) {
+            speaker.speak(
+                message,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                "JARVIS"
             )
         }
     }
 
     private fun openNotificationAccess() {
-        val intent = Intent(
-            Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS
+        startActivity(
+            Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
         )
-        startActivity(intent)
     }
 
     private fun startNotch() {
         if (Settings.canDrawOverlays(this)) {
-            val serviceIntent = Intent(
-                this,
-                FloatingNotchService::class.java
-            )
-            startForegroundService(serviceIntent)
+            launchNotchService()
         } else {
+            startNotchAfterPermission = true
             val permissionIntent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
@@ -71,79 +97,146 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun speak(message: String) {
-        speaker.speak(
-            message,
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            "JARVIS"
-        )
+    private fun launchNotchService() {
+        try {
+            val serviceIntent = Intent(
+                this,
+                FloatingNotchService::class.java
+            )
+            startForegroundService(serviceIntent)
+            speak("Floating interface activated.")
+        } catch (_: Exception) {
+            speak("I could not start the floating interface.")
+        }
+    }
+
+    private fun openApp(packageName: String, appName: String) {
+        val launchIntent = packageManager
+            .getLaunchIntentForPackage(packageName)
+
+        if (launchIntent != null) {
+            startActivity(launchIntent)
+        } else {
+            speak("$appName is not installed.")
+        }
+    }
+
+    private fun searchWeb(query: String) {
+        val url = "https://www.google.com/search?q=${Uri.encode(query)}"
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }
+
+    private fun confirmOpenDialer() {
+        AlertDialog.Builder(this)
+            .setTitle("JARVIS confirmation")
+            .setMessage("Would you like me to open the phone dialer?")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Open dialer") { _, _ ->
+                startActivity(Intent(Intent.ACTION_DIAL))
+            }
+            .show()
     }
 
     private fun handleCommand(command: String) {
-        val text = command.lowercase(Locale.getDefault())
+        val text = command.lowercase(Locale.UK).trim()
 
         when {
-            "bluetooth" in text ->
-                startActivity(
-                    Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-                )
+            text.contains("bluetooth") -> {
+                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+            }
 
-            "settings" in text ->
-                startActivity(
-                    Intent(Settings.ACTION_SETTINGS)
-                )
+            text.contains("settings") -> {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            }
 
-            "alarm" in text ->
+            text.contains("alarm") -> {
                 startActivity(
                     Intent(android.provider.AlarmClock.ACTION_SET_ALARM)
                 )
-
-            "call" in text -> {
-                speak("Opening phone dialer.")
-                startActivity(Intent(Intent.ACTION_DIAL))
             }
 
-            "message" in text || "sms" in text ->
-                startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("smsto:"))
+            text.contains("call") || text.contains("phone dialer") -> {
+                confirmOpenDialer()
+            }
+
+            text.contains("whatsapp") -> {
+                openApp("com.whatsapp", "WhatsApp")
+            }
+
+            text.contains("famapp") || text.contains("fampay") -> {
+                searchWeb("FamApp official app")
+            }
+
+            text.contains("discount") ||
+            text.contains("shopping deal") ||
+            text.contains("coupon") -> {
+                searchWeb(
+                    "latest shopping discounts coupons India Amazon Flipkart Myntra"
                 )
-
-            "whatsapp" in text -> {
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    setPackage("com.whatsapp")
-                    putExtra(Intent.EXTRA_TEXT, "Hello!")
-                }
-
-                runCatching {
-                    startActivity(intent)
-                }.onFailure {
-                    speak("WhatsApp is unavailable.")
-                }
             }
 
-            "gmail" in text || "email" in text ->
+            text.contains("amazon") -> {
+                startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://www.amazon.in/")
+                    )
+                )
+            }
+
+            text.contains("flipkart") -> {
+                startActivity(
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://www.flipkart.com/")
+                    )
+                )
+            }
+
+            text.contains("gmail") || text.contains("email") -> {
                 startActivity(
                     Intent(
                         Intent.ACTION_SENDTO,
                         Uri.parse("mailto:")
                     )
                 )
+            }
 
-            "stock" in text || "market" in text ->
-                startActivity(
-                    Intent(
-                        Intent.ACTION_VIEW,
-                        Uri.parse("https://www.google.com/finance/")
-                    )
+            text.contains("weather") -> {
+                searchWeb("weather today")
+            }
+
+            text.contains("time") -> {
+                val currentTime = java.text.SimpleDateFormat(
+                    "h:mm a",
+                    Locale.UK
+                ).format(java.util.Date())
+                speak("The time is $currentTime.")
+            }
+
+            text.contains("date") -> {
+                val currentDate = java.text.SimpleDateFormat(
+                    "EEEE, d MMMM yyyy",
+                    Locale.UK
+                ).format(java.util.Date())
+                speak("Today is $currentDate.")
+            }
+
+            text.startsWith("search ") -> {
+                searchWeb(text.removePrefix("search "))
+            }
+
+            text.contains("hello") || text.contains("hi jarvis") -> {
+                speak("Good day, sir. JARVIS is ready.")
+            }
+
+            else -> {
+                speak(
+                    "I have not learned that command yet. " +
+                    "You can ask me to open apps, set an alarm, " +
+                    "check the time, or find shopping discounts."
                 )
-
-            "hello" in text || "hi jarvis" in text ->
-                speak("Hello sir. JARVIS systems are ready.")
-
-            else ->
-                speak("I heard you. This command is not available yet.")
+            }
         }
     }
 
@@ -163,13 +256,8 @@ fun JarvisScreen(
     onStartNotch: () -> Unit,
     onNotificationAccess: () -> Unit
 ) {
-    var status by remember {
-        mutableStateOf("SYSTEM ONLINE")
-    }
-
-    var command by remember {
-        mutableStateOf("")
-    }
+    var status by remember { mutableStateOf("SYSTEM ONLINE") }
+    var command by remember { mutableStateOf("") }
 
     val blue = Color(0xFF00BFFF)
 
@@ -177,12 +265,10 @@ fun JarvisScreen(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val spoken = result.data
-            ?.getStringArrayListExtra(
-                RecognizerIntent.EXTRA_RESULTS
-            )
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             ?.firstOrNull()
 
-        if (spoken != null) {
+        if (!spoken.isNullOrBlank()) {
             command = spoken
             status = "COMMAND RECEIVED"
             onCommand(spoken)
@@ -198,6 +284,7 @@ fun JarvisScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFF050B16))
+                .verticalScroll(rememberScrollState())
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -215,24 +302,19 @@ fun JarvisScreen(
                 fontSize = 12.sp
             )
 
-            Spacer(Modifier.height(30.dp))
+            Spacer(Modifier.height(25.dp))
 
             Surface(
-                modifier = Modifier.size(170.dp),
+                modifier = Modifier.size(150.dp),
                 shape = RoundedCornerShape(100.dp),
                 color = Color(0xFF102B48)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        "J",
-                        color = blue,
-                        fontSize = 76.sp
-                    )
+                    Text("J", color = blue, fontSize = 76.sp)
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
-
+            Spacer(Modifier.height(18.dp))
             Text(status, color = blue)
 
             Spacer(Modifier.height(15.dp))
@@ -250,7 +332,7 @@ fun JarvisScreen(
                         )
                         putExtra(
                             RecognizerIntent.EXTRA_LANGUAGE,
-                            "en-IN"
+                            "en-GB"
                         )
                         putExtra(
                             RecognizerIntent.EXTRA_PROMPT,
@@ -275,7 +357,7 @@ fun JarvisScreen(
                 onClick = onStartNotch,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("ENABLE FLOATING NOTCH")
+                Text("ENABLE FLOATING INTERFACE")
             }
 
             Spacer(Modifier.height(10.dp))
@@ -287,7 +369,7 @@ fun JarvisScreen(
                 Text("ENABLE NOTIFICATION ACCESS")
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(15.dp))
 
             OutlinedTextField(
                 value = command,
@@ -309,63 +391,57 @@ fun JarvisScreen(
             }
 
             Spacer(Modifier.height(20.dp))
-
             Text("QUICK ACCESS", color = blue)
-
             Spacer(Modifier.height(10.dp))
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Button(
+                onClick = { onCommand("settings") },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                QuickButton("Settings", Modifier.weight(1f)) {
-                    onCommand("settings")
-                }
-
-                QuickButton("Alarm", Modifier.weight(1f)) {
-                    onCommand("alarm")
-                }
+                Text("SETTINGS")
             }
 
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Button(
+                onClick = { onCommand("alarm") },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                QuickButton("Call", Modifier.weight(1f)) {
-                    onCommand("call")
-                }
-
-                QuickButton("WhatsApp", Modifier.weight(1f)) {
-                    onCommand("whatsapp")
-                }
-
-                QuickButton("Stocks", Modifier.weight(1f)) {
-                    onCommand("stock")
-                }
+                Text("ALARM")
             }
 
-            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = { onCommand("whatsapp") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("WHATSAPP")
+            }
+
+            Button(
+                onClick = { onCommand("famapp") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("FAMAPP")
+            }
+
+            Button(
+                onClick = { onCommand("shopping discounts") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("SHOPPING DEALS")
+            }
+
+            Spacer(Modifier.height(18.dp))
 
             Text(
                 "Microphone activates only when you tap Talk.",
                 color = Color.Gray,
                 fontSize = 11.sp
             )
-        }
-    }
-}
 
-@Composable
-fun QuickButton(
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        modifier = modifier,
-        contentPadding = PaddingValues(5.dp)
-    ) {
-        Text(label, fontSize = 11.sp)
+            Text(
+                "British English voice depends on your phone's installed voice engine.",
+                color = Color.Gray,
+                fontSize = 11.sp
+            )
+        }
     }
 }
